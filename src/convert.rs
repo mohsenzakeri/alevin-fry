@@ -140,10 +140,32 @@ fn write_list<W: Write>(
     Ok(())
 }
 
+fn get_score(
+    as_val: Option<Result<noodles::sam::alignment::record::data::field::Value<'_>, std::io::Error>>,
+) -> anyhow::Result<i32> {
+    if let Some(Ok(score)) = as_val {
+        match score {
+            SamTagValue::UInt32(v) => Ok(v as i32),
+            SamTagValue::Int32(v) => Ok(v),
+            SamTagValue::UInt16(v) => Ok(v as i32),
+            SamTagValue::Int16(v) => Ok(v as i32),
+            SamTagValue::UInt8(v) => Ok(v as i32),
+            SamTagValue::Int8(v) => Ok(v as i32),
+            _ => {
+                eprintln!("{:?}", score);
+                bail!("NO SCORE")
+            }
+        }
+    } else {
+        bail!("NO SCORE");
+    }
+}
+
 pub fn bam2rad<P1, P2>(
     input_file: P1,
     rad_file: P2,
     num_threads: u32,
+    filter_best: bool,
     log: &slog::Logger,
 ) -> anyhow::Result<()>
 where
@@ -386,6 +408,9 @@ where
     let mut bc = 0u64;
     let mut umi = 0u64;
     let mut tid_list = Vec::<u32>::new();
+    let mut score_list = Vec::<i32>::new();
+    const AS: SamTag = SamTag::new(b'A', b'S');
+
     //for r in bam.records(){
     loop {
         let rec_res = record_it.next();
@@ -401,6 +426,10 @@ where
 
         let flags = rec.flags()?;
 
+        if flags.is_unmapped() || flags.is_supplementary() {
+            continue;
+        }
+
         let is_reverse = flags.is_reverse_complemented();
         let qname_str = rec.name().expect("valid name").to_string().to_owned();
         let qname = qname_str;
@@ -409,7 +438,14 @@ where
             if !is_reverse {
                 tid |= MASK_LOWER_31_U32;
             }
+            let flag_data = rec.data();
+            let score = if filter_best {
+                get_score(flag_data.get(&AS))?
+            } else {
+                1
+            };
             tid_list.push(tid);
+            score_list.push(score);
             // local_nrec += 1;
             continue;
         }
@@ -418,7 +454,14 @@ where
         // for the last read, _unless_ this is the very
         // first read, in which case we shall continue
         if !tid_list.is_empty() {
-            write_list(&tid_list, &bc_typeid, bc, &umi_typeid, umi, &mut data)?;
+            let max_score = score_list.iter().max().expect("max should exist");
+            // filter only transcripts having a score at least equal to the best
+            let flist = tid_list
+                .iter()
+                .zip(score_list.iter())
+                .filter_map(|(t, s)| if s >= max_score { Some(*t) } else { None })
+                .collect::<Vec<u32>>();
+            write_list(&flist, &bc_typeid, bc, &umi_typeid, umi, &mut data)?;
         }
 
         // dump if we reach the buf_limit
@@ -487,10 +530,17 @@ where
             umi = cb_string_to_u64(umi_string.as_bytes()).unwrap();
             old_qname.clone_from(&qname);
             tid_list.clear();
+            score_list.clear();
             if !is_reverse {
                 tid |= MASK_LOWER_31_U32;
             }
+            let score = if filter_best {
+                get_score(flag_data.get(&AS))?
+            } else {
+                1
+            };
             tid_list.push(tid);
+            score_list.push(score);
             local_nrec += 1;
         }
     }
@@ -499,7 +549,14 @@ where
         // println!("In the residual writing part");
         // first fill the buffer with the last remaining read
         if !tid_list.is_empty() {
-            write_list(&tid_list, &bc_typeid, bc, &umi_typeid, umi, &mut data)?;
+            let max_score = score_list.iter().max().expect("max should exist");
+            // filter only transcripts having a score at least equal to the best
+            let flist = tid_list
+                .iter()
+                .zip(score_list.iter())
+                .filter_map(|(t, s)| if s >= max_score { Some(*t) } else { None })
+                .collect::<Vec<u32>>();
+            write_list(&flist, &bc_typeid, bc, &umi_typeid, umi, &mut data)?;
         }
 
         data.set_position(0);

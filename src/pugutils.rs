@@ -880,6 +880,7 @@ pub fn get_num_molecules(
     };
 
     let comps = weakly_connected_components(g);
+
     // a vector of length 2 that records at index 0
     // the number of single-node subgraphs that are
     // transcript-unique and at index 1 the number of

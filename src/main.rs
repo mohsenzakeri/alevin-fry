@@ -72,6 +72,7 @@ fn main() -> anyhow::Result<()> {
                 .value_parser(value_parser!(u32))
                 .default_value(max_num_threads.clone()),
         )
+        .arg(arg!(-f --filter-best "keep only the highest scoring alignments for each read"))
         .arg(
             arg!(-o --output <RADFILE> "output RAD file")
                 .required(true)
@@ -372,7 +373,8 @@ fn main() -> anyhow::Result<()> {
         let input_file: &PathBuf = t.get_one("bam").unwrap();
         let rad_file: &PathBuf = t.get_one("output").unwrap();
         let num_threads: u32 = *t.get_one("threads").unwrap();
-        alevin_fry::convert::bam2rad(input_file, rad_file, num_threads, &log)?
+        let filter: bool = t.get_flag("filter-best");
+        alevin_fry::convert::bam2rad(input_file, rad_file, num_threads, filter, &log)?
     }
 
     // convert a rad file to a textual representation and write to stdout
