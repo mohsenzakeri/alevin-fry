@@ -7,7 +7,7 @@
  * License: 3-clause BSD, see https://opensource.org/licenses/BSD-3-Clause
  */
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use dashmap::DashMap;
 use slog::crit;
 use slog::{info, warn};
@@ -732,7 +732,9 @@ pub fn generate_permit_list(gpl_opts: GenPermitListOpts) -> anyhow::Result<u64> 
     let mut num_orientation_compat_reads = 0usize;
     let mut max_ambiguity_read = 0usize;
 
-    let nc = num_chunks.expect("unknwon number of chunks").get() as u64;
+    let nc = num_chunks.ok_or(
+        anyhow!("The RAD file appears to have no chunks; this most commonly occurs when no reads are mapped due to an incorrect chemistry being set. Please ensure that you have set the correct chemistry"))?
+        .get() as u64;
     let pbar = ProgressBar::new(nc);
     pbar.set_style(
         ProgressStyle::with_template(
