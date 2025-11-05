@@ -6,6 +6,7 @@ authors = [
   "Noor Pratap Singh <npsingh@umd.edu>",
   "Rob Patro <rob@cs.umd.edu>",
 ]
+
 name = "alevin-fry"
 version = "0.11.2"
 edition = "2021"
